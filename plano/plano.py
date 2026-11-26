@@ -4,11 +4,28 @@ todo se guarda de forma geométrica y se rasteriza al final."""
 from dataclasses import dataclass, field
 import numpy as np
 from mathlib import Mat3
-from raster2d import rellenar_poligono, dibujar_poligono, linea
+from raster2d import rellenar_poligono, dibujar_poligono, linea, circulo
 
 COLOR_MURO = (70, 70, 80)
 COLOR_VENTANA = (80, 150, 220)
 COLOR_PUERTA = (150, 95, 45)
+MARGEN_SELECCION_MURO = 0.10    # metros extra para que un muro delgado sea fácil de seleccionar
+
+
+def punto_en_poligono(x, y, poligono):
+    """Prueba par-impar (ray casting): se lanza un rayo horizontal desde (x, y) hacia +x
+    y se cuentan los cruces con los lados; si el número es impar, el punto está dentro.
+    Usa el mismo intervalo semiabierto que el relleno por líneas de barrido."""
+    dentro = False
+    n = len(poligono)
+    for i in range(n):
+        xa, ya = poligono[i]
+        xb, yb = poligono[(i + 1) % n]
+        if (ya > y) != (yb > y):
+            x_cruce = xa + (y - ya) * (xb - xa) / (yb - ya)
+            if x < x_cruce:
+                dentro = not dentro
+    return dentro
 
 
 @dataclass
@@ -51,10 +68,14 @@ class MuebleEnPlanta:
     y: float = 0.0
     angulo: float = 0.0
     color: tuple = (190, 160, 120)
+    escala_x: float = 1.0    # escalamiento a lo largo del ancho (eje x local del mueble)
+    escala_y: float = 1.0    # escalamiento a lo largo del largo (eje y local del mueble)
 
     def matriz_modelo(self):
-        """M = T · R · S: el mueble se define centrado en el origen, se gira y luego se traslada."""
-        return Mat3.traslacion(self.x, self.y) @ Mat3.rotacion(self.angulo) @ Mat3.escalamiento(1, 1)
+        """M = T · R · S: el mueble se define centrado en el origen, se escala en sus
+        ejes locales, se gira y al final se traslada (vectores columna: S se aplica primero)."""
+        return (Mat3.traslacion(self.x, self.y) @ Mat3.rotacion(self.angulo)
+                @ Mat3.escalamiento(self.escala_x, self.escala_y))
 
     def poligono(self):
         a, l = self.ancho / 2, self.largo / 2
@@ -63,10 +84,72 @@ class MuebleEnPlanta:
 
 
 @dataclass
+class Figura:
+    """
+    Primitiva libre del editor 2D (módulo 1): 'punto', 'linea', 'circulo' o 'poligono'.
+    Se guarda de forma geométrica, en metros: `puntos` son los vértices (el centro en el
+    círculo) y `radio` el radio del círculo. Sus atributos gráficos son el color de trazo,
+    el color de relleno (None = sin relleno), el grosor del pincel en píxeles y el algoritmo
+    de líneas ('bresenham', 'dda' o 'wu' con antialiasing).
+    """
+    tipo: str
+    puntos: list
+    color: tuple = (30, 30, 30)
+    relleno: tuple | None = None
+    grosor: int = 2
+    algoritmo: str = "bresenham"
+    radio: float = 0.0
+
+    def contorno(self, margen=0.06):
+        """Polígono en metros que rodea la figura (para resaltarla y para detectar clics)."""
+        if self.tipo == "circulo":
+            t = np.linspace(0, 2 * np.pi, 32, endpoint=False)
+            cx, cy = self.puntos[0]
+            r = self.radio + margen
+            return np.column_stack((cx + r * np.cos(t), cy + r * np.sin(t)))
+        if self.tipo == "poligono":
+            return np.array(self.puntos, float)
+        if self.tipo == "linea":
+            a, b = np.array(self.puntos[0], float), np.array(self.puntos[1], float)
+            d = b - a
+            largo = np.linalg.norm(d)
+            if largo > 1e-9:
+                u = d / largo
+                n = np.array([-u[1], u[0]]) * margen
+                u = u * margen
+                return np.array([a - u + n, b + u + n, b + u - n, a - u - n])
+        # punto (o línea de largo cero): un cuadrado pequeño
+        x, y = self.puntos[0]
+        return np.array([(x - margen, y - margen), (x + margen, y - margen),
+                         (x + margen, y + margen), (x - margen, y + margen)])
+
+    def dibujar(self, fb, a_pantalla):
+        """Rasteriza la figura con los algoritmos propios (Bresenham/DDA/Wu, punto medio y
+        relleno por líneas de barrido); `a_pantalla` es la matriz metros → píxeles."""
+        pts = a_pantalla.aplicar_puntos(np.array(self.puntos, float))
+        if self.tipo == "punto":
+            fb.estampar(int(round(pts[0][0])), int(round(pts[0][1])), self.color, max(self.grosor, 1))
+        elif self.tipo == "linea":
+            linea(fb, pts[0][0], pts[0][1], pts[1][0], pts[1][1], self.color, self.grosor, self.algoritmo)
+        elif self.tipo == "circulo":
+            escala = float(np.hypot(*a_pantalla.m[:2, 0]))     # píxeles por metro
+            circulo(fb, pts[0][0], pts[0][1], self.radio * escala, self.color, self.grosor, self.relleno)
+        elif self.tipo == "poligono":
+            if self.relleno is not None:
+                rellenar_poligono(fb, pts, self.relleno)
+            dibujar_poligono(fb, pts, self.color, self.grosor, cerrar=True, algoritmo=self.algoritmo)
+
+
+@dataclass
 class Plano:
     muros: list = field(default_factory=list)
     aberturas: list = field(default_factory=list)
     muebles: list = field(default_factory=list)
+    figuras: list = field(default_factory=list)   # primitivas libres del editor 2D
+
+    def agregar_figura(self, figura):
+        self.figuras.append(figura)
+        return len(self.figuras) - 1
 
     def agregar_muro(self, p1, p2, espesor=0.15):
         self.muros.append(Muro(p1, p2, espesor))
@@ -92,6 +175,131 @@ class Plano:
         c = np.array(m.p1, float) + u * (ab.pos * m.largo())
         return m, c, u, np.array([-u[1], u[0]])
 
+    def poligono_abertura(self, ab):
+        """Rectángulo del hueco de una puerta o ventana (ancho × espesor del muro)."""
+        m, c, u, n = self._hueco(ab)
+        a, h = ab.ancho / 2, m.espesor / 2 + 0.005
+        return np.array([c - u * a + n * h, c + u * a + n * h, c + u * a - n * h, c - u * a - n * h])
+
+    # ---- selección y borrado ----
+    def poligono_elemento(self, tipo, i):
+        """Contorno en metros del elemento ('figura', 'mueble', 'abertura' o 'muro') de índice i."""
+        if tipo == "figura":
+            return self.figuras[i].contorno()
+        if tipo == "mueble":
+            return self.muebles[i].poligono()
+        if tipo == "abertura":
+            return self.poligono_abertura(self.aberturas[i])
+        return self.muros[i].poligono()
+
+    def mueble_en(self, x, y):
+        """Índice del mueble que está en el punto (x, y) en metros, o None.
+        Si hay muebles encimados devuelve el de arriba (el último dibujado)."""
+        for i in reversed(range(len(self.muebles))):
+            if punto_en_poligono(x, y, self.muebles[i].poligono()):
+                return i
+        return None
+
+    def elemento_en(self, x, y):
+        """Devuelve (tipo, índice) del elemento que está en el punto (x, y) en metros, o None.
+        Se revisa en el orden inverso al dibujo: primero las figuras libres (van encima de
+        todo), luego muebles, puertas y ventanas, y al final muros."""
+        for i in reversed(range(len(self.figuras))):
+            if punto_en_poligono(x, y, self.figuras[i].contorno()):
+                return ("figura", i)
+        i = self.mueble_en(x, y)
+        if i is not None:
+            return ("mueble", i)
+        for i in reversed(range(len(self.aberturas))):
+            if punto_en_poligono(x, y, self.poligono_abertura(self.aberturas[i])):
+                return ("abertura", i)
+        i = self.muro_en(x, y)
+        return ("muro", i) if i is not None else None
+
+    def muro_en(self, x, y):
+        """Índice del muro en el punto (x, y), con un margen para que sea fácil de apuntar."""
+        for i in reversed(range(len(self.muros))):
+            m = self.muros[i]
+            if m.largo() < 1e-9:
+                continue
+            ampliado = Muro(m.p1, m.p2, m.espesor + MARGEN_SELECCION_MURO)
+            if punto_en_poligono(x, y, ampliado.poligono()):
+                return i
+        return None
+
+    # ---- colocación de puertas y ventanas ----
+    def posicion_en_muro(self, i, x, y, ancho):
+        """
+        Posición (0 a 1, centro del vano) más cercana al punto (x, y) sobre el muro i:
+        se proyecta el punto sobre la dirección del muro (producto punto) y se limita para
+        que el vano quede entero, sin invadir los muros que llegan a las esquinas.
+        Devuelve None si el vano no cabe en el muro.
+        """
+        m = self.muros[i]
+        largo = m.largo()
+        margen = ancho / 2 + m.espesor / 2 + 0.05
+        if largo < 2 * margen:
+            return None
+        t = float(np.dot(np.array((x, y), float) - np.array(m.p1, float), m.direccion()))
+        return min(max(t, margen), largo - margen) / largo
+
+    def abertura_se_superpone(self, i, pos, ancho, separacion=0.0):
+        """¿Un vano de `ancho` centrado en `pos` del muro i se superpone con otro vano de ese
+        muro? Dos vanos que solo se tocan (p. ej. dos ventanas juntas) no se superponen."""
+        largo = self.muros[i].largo()
+        centro = pos * largo
+        for ab in self.aberturas:
+            if ab.muro == i and abs(centro - ab.pos * largo) < (ancho + ab.ancho) / 2 + separacion - 1e-6:
+                return True
+        return False
+
+    def ajustar_junto_a_vecinos(self, i, pos, ancho, iman=0.15):
+        """
+        Ajuste magnético de un vano sobre el muro i. Si queda encima de otro vano o a menos
+        de `iman` metros de él, se desplaza para quedar pegado a ese vano (del lado más cercano
+        al cursor), así dos ventanas se pueden juntar sin tener que atinar al píxel.
+        Devuelve la posición ajustada (0 a 1), o None si ahí no cabe sin superponerse.
+        El ajuste nunca mueve el vano más de su propio ancho + `iman`, para que no salte lejos
+        del cursor (por ejemplo, al otro lado de una ventana vecina).
+        """
+        m = self.muros[i]
+        largo = m.largo()
+        margen = ancho / 2 + m.espesor / 2 + 0.05
+        centro = pos * largo
+        vecinos = [(ab.pos * largo, ab.ancho / 2) for ab in self.aberturas if ab.muro == i]
+
+        def valido(c):
+            return margen - 1e-9 <= c <= largo - margen + 1e-9 and not self.abertura_se_superpone(i, c / largo, ancho)
+
+        cercanos = [(cv, hv) for cv, hv in vecinos if abs(centro - cv) < ancho / 2 + hv + iman]
+        if not cercanos:
+            return pos if valido(centro) else None
+        # Posiciones pegadas a cada vecino cercano, de la más próxima al cursor a la más lejana
+        pegadas = sorted((c for cv, hv in cercanos for c in (cv - hv - ancho / 2, cv + hv + ancho / 2)),
+                         key=lambda c: abs(c - centro))
+        for c in pegadas:
+            if abs(c - centro) <= ancho + iman and valido(c):
+                return c / largo
+        return None
+
+    def eliminar(self, tipo, i):
+        """Borra un elemento. Al borrar un muro se borran también sus puertas y ventanas,
+        y se corrigen los índices de muro de las aberturas que quedan."""
+        if tipo == "figura":
+            del self.figuras[i]
+        elif tipo == "mueble":
+            del self.muebles[i]
+        elif tipo == "abertura":
+            del self.aberturas[i]
+        elif tipo == "muro":
+            self.aberturas = [ab for ab in self.aberturas if ab.muro != i]
+            for ab in self.aberturas:
+                if ab.muro > i:
+                    ab.muro -= 1
+            del self.muros[i]
+        else:
+            raise ValueError(f"Tipo de elemento desconocido: {tipo}")
+
     def dibujar(self, fb, escala=60.0, origen=(40, None), cuadricula=True):
         """Dibuja el plano en el framebuffer. 'escala' = píxeles por metro."""
         oy = fb.alto - 40 if origen[1] is None else origen[1]
@@ -111,9 +319,8 @@ class Plano:
 
         for ab in self.aberturas:           # el hueco se pinta encima del muro
             m, c, u, n = self._hueco(ab)
-            a, h = ab.ancho / 2, m.espesor / 2 + 0.005
-            hueco = [c - u * a + n * h, c + u * a + n * h, c + u * a - n * h, c - u * a - n * h]
-            rellenar_poligono(fb, pant(hueco), fb.fondo)
+            a = ab.ancho / 2
+            rellenar_poligono(fb, pant(self.poligono_abertura(ab)), fb.fondo)
             if ab.tipo == "ventana":
                 p = pant([c - u * a, c + u * a])
                 linea(fb, p[0][0], p[0][1], p[1][0], p[1][1], COLOR_VENTANA, 3)
@@ -128,3 +335,6 @@ class Plano:
 
         for mu in self.muebles:
             rellenar_poligono(fb, pant(mu.poligono()), mu.color, (60, 45, 30), 1)
+
+        for fig in self.figuras:            # primitivas libres, encima de todo
+            fig.dibujar(fb, a_pantalla)

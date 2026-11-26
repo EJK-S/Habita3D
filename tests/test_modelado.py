@@ -1,15 +1,44 @@
 """Pruebas unitarias del paquete modelado (B-Rep, CSG, Bézier, revolución y fractales)."""
 import numpy as np
-from modelado import extruir_muro, csg_diferencia, Bezier, revolucion, arbol_fractal
+from modelado import (extruir_muro, csg_diferencia, Bezier, revolucion, arbol_fractal,
+                      crear_prisma, Malla)
 
 
 def test_extruir_muro_brep_cerrado():
     m = extruir_muro((0.0, 0.0), (4.0, 0.0), espesor=0.2, altura=2.5)
-    assert len(m.vertices) == 8
+    # El prisma tiene 8 esquinas distintas y 12 triángulos (6 caras)
+    assert len(np.unique(np.round(m.vertices, 9), axis=0)) == 8
     assert len(m.caras) == 12
     # Normales unitarias
     normas = np.linalg.norm(m.normales_cara, axis=1)
     assert np.allclose(normas, 1.0, atol=1e-6)
+
+
+def test_caja_tiene_normales_de_vertice_iguales_a_su_cara():
+    # Sin vértices compartidos entre caras, Gouraud no redondea las aristas de la caja
+    m = extruir_muro((0.0, 0.0), (4.0, 0.0), espesor=0.2, altura=2.5)
+    for k in range(3):
+        assert np.allclose(m.normales_vertice[m.caras[:, k]], m.normales_cara, atol=1e-9)
+
+
+def test_combinar_conserva_color_y_textura_de_cada_pieza():
+    a = crear_prisma(0, 0, 0, 1, 1, 1, color=(200, 0, 0), textura_id="madera")
+    b = crear_prisma(2, 0, 0, 1, 1, 1, color=(0, 0, 200), textura_id=None)
+    m = Malla.combinar([a, b])
+    assert np.allclose(m.colores_vertice[: len(a.vertices)], (200, 0, 0))
+    assert np.allclose(m.colores_vertice[len(a.vertices):], (0, 0, 200))
+    assert m.texturas_cara == ["madera"] * len(a.caras) + [None] * len(b.caras)
+    # Al trasladar el objeto combinado se mantienen los colores por pieza
+    from mathlib import Mat4
+    t = m.aplicar_transformacion(Mat4.traslacion(1, 0, 0))
+    assert np.allclose(t.colores_vertice, m.colores_vertice)
+    assert t.texturas_cara == m.texturas_cara
+
+
+def test_arbol_fractal_tiene_hojas_verdes():
+    f = arbol_fractal(profundidad=3)
+    colores = {tuple(c) for c in f.colores_vertice.astype(int)}
+    assert (52, 150, 68) in colores and (115, 78, 46) in colores
 
 
 def test_csg_diferencia_puerta_y_ventana():
@@ -28,6 +57,16 @@ def test_bezier_de_casteljau_extremos_y_punto_medio():
     assert np.allclose(b.evaluar(1.0), [2.0, 0.0])
     # Para parábola cuadrática B(0.5) = 0.25*P0 + 0.5*P1 + 0.25*P2 = (1.0, 1.0)
     assert np.allclose(b.evaluar(0.5), [1.0, 1.0])
+
+
+def test_niveles_de_casteljau_terminan_en_b_de_t():
+    b = Bezier([(0.0, 0.0), (1.0, 2.0), (3.0, 2.0), (4.0, 0.0)])
+    for t in (0.0, 0.3, 0.5, 1.0):
+        niveles = b.niveles_de_casteljau(t)
+        assert [len(n) for n in niveles] == [4, 3, 2, 1]                # cúbica: 4 → 3 → 2 → 1
+        assert np.allclose(niveles[-1][0], b.evaluar(t))
+    # Primer nivel en t = 0.5: puntos medios de cada tramo del polígono de control
+    assert np.allclose(b.niveles_de_casteljau(0.5)[1], [(0.5, 1.0), (2.0, 2.0), (3.5, 1.0)])
 
 
 def test_revolucion_y_fractal():

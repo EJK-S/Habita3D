@@ -63,7 +63,10 @@ def _caja_local_muro(
             [1, 0, 4], [1, 4, 5],  # -y
         ], dtype=np.int32)
 
+    # B-Rep de 8 vértices y 12 triángulos; para el render cada cara lleva sus propios
+    # vértices, así la normal (luz) y el mapeado cúbico (textura) son los de esa cara.
     m = Malla(vertices=mundo, caras=caras, color=color, textura_id=textura_id, nombre="bloque_muro")
+    m = m.separar_vertices()
     m.aplicar_mapeado_uv(tipo="cubico", escala=0.5)
     return m
 

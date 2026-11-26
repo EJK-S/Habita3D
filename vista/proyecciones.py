@@ -137,6 +137,13 @@ class VolumenVision:
 
         resultados = []
         M = mat_proy.m
+        resultados.extend(self._proyectar(polis, M, ancho, alto))
+        return resultados
+
+    @staticmethod
+    def _proyectar(polis, M, ancho, alto):
+        """Proyecta triángulos ya recortados (lista de (verts, uvs, cols)) a pantalla."""
+        resultados = []
         for v_tri, uv_tri, col_tri in polis:
             hom = np.hstack([v_tri, np.ones((3, 1), dtype=np.float64)])
             clip = hom @ M.T
@@ -160,3 +167,66 @@ class VolumenVision:
             resultados.append((pts_pant, inv_w, uv_tri, col_tri))
 
         return resultados
+
+    def proyectar_lote(
+        self,
+        p_cam: np.ndarray,
+        uvs: np.ndarray,
+        colores: np.ndarray,
+        mat_proy: Mat4,
+        ancho: int,
+        alto: int,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Versión por lotes de `recortar_y_proyectar_triangulo` para T triángulos a la vez
+        (p_cam (T, 3, 3), uvs (T, 3, 2), colores (T, 3, 3)).
+
+        Los triángulos que están enteros delante del plano cercano se proyectan y se
+        descartan contra el frustum con operaciones vectorizadas; solo los que cruzan el
+        plano cercano pasan por el recorte de Sutherland-Hodgman uno a uno.
+
+        Devuelve (pts_pant (K,3,3), inv_w (K,3), uvs (K,3,2), cols (K,3,3), origen (K,)),
+        donde `origen` es el índice del triángulo de entrada, en el mismo orden de entrada.
+        """
+        z_near = -self.cercano
+        n_dentro = np.sum(p_cam[:, :, 2] <= z_near, axis=1)
+        completos = np.where(n_dentro == 3)[0]
+        cruzan = np.where((n_dentro > 0) & (n_dentro < 3))[0]
+
+        # --- triángulos completos: proyección vectorizada ---
+        P = p_cam[completos]
+        hom = np.concatenate([P, np.ones(P.shape[:2] + (1,))], axis=2)
+        clip = hom @ mat_proy.m.T                                  # (K, 3, 4)
+        w = clip[:, :, 3]
+        valido = np.all(np.abs(w) >= 1e-9, axis=1)
+        inv_w = 1.0 / np.where(valido[:, None], w, 1.0)
+        ndc = clip[:, :, :3] * inv_w[:, :, None]
+        fuera = np.zeros(len(P), dtype=bool)
+        for eje in range(3):
+            fuera |= np.all(ndc[:, :, eje] < -1.0, axis=1) | np.all(ndc[:, :, eje] > 1.0, axis=1)
+        quedan = valido & ~fuera
+
+        ndc, inv_w = ndc[quedan], inv_w[quedan]
+        pts = np.stack([
+            (ndc[:, :, 0] + 1.0) * 0.5 * (ancho - 1),
+            (1.0 - ndc[:, :, 1]) * 0.5 * (alto - 1),
+            ndc[:, :, 2],
+        ], axis=2)
+        lista_pts, lista_iw = [pts], [inv_w]
+        lista_uv, lista_col = [uvs[completos][quedan]], [colores[completos][quedan]]
+        lista_origen = [completos[quedan]]
+
+        # --- triángulos que cruzan el plano cercano: recorte uno a uno ---
+        for i in cruzan:
+            for pts_t, iw_t, uv_t, col_t in self.recortar_y_proyectar_triangulo(
+                    p_cam[i], uvs[i], colores[i], mat_proy, ancho, alto):
+                lista_pts.append(pts_t[None])
+                lista_iw.append(iw_t[None])
+                lista_uv.append(np.asarray(uv_t)[None])
+                lista_col.append(np.asarray(col_t)[None])
+                lista_origen.append(np.array([i]))
+
+        origen = np.concatenate(lista_origen)
+        orden = np.argsort(origen, kind="stable")          # mismo orden que triángulo a triángulo
+        return (np.concatenate(lista_pts)[orden], np.concatenate(lista_iw)[orden],
+                np.concatenate(lista_uv)[orden], np.concatenate(lista_col)[orden], origen[orden])

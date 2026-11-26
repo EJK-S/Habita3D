@@ -19,7 +19,7 @@ SALIDA.mkdir(parents=True, exist_ok=True)
 
 
 def fuente(t=14):
-    for f in ("DejaVuSans.ttf", "LiberationSans-Regular.ttf", "Arial.ttf"):
+    for f in ("DejaVuSans.ttf", "LiberationSans-Regular.ttf", "arial.ttf", "Arial.ttf"):
         try:
             return ImageFont.truetype(f, t)
         except OSError:
@@ -27,8 +27,18 @@ def fuente(t=14):
     return ImageFont.load_default()
 
 
+def fuente_simbolos(t=14):
+    """Arial no tiene el símbolo ∪: para títulos con símbolos de conjuntos (CSG)."""
+    for f in ("DejaVuSans.ttf", "seguisym.ttf", "cambria.ttc"):
+        try:
+            return ImageFont.truetype(f, t)
+        except OSError:
+            pass
+    return fuente(t)
+
+
 def con_titulo(img: Image.Image, texto: str) -> Image.Image:
-    f = fuente(14)
+    f = fuente_simbolos(14) if any(s in texto for s in "∪∩") else fuente(14)
     barra = Image.new("RGB", (img.width, 28), (245, 245, 245))
     ImageDraw.Draw(barra).text((8, 6), texto, fill=(30, 30, 30), font=f)
     out = Image.new("RGB", (img.width, img.height + 28), "white")
@@ -124,14 +134,16 @@ print("Generada fig_08_fractales_recursion.png")
 
 # ------------------------------------------------ Figura 9: Sin textura vs Con textura
 esc_tex = Escena(crear_plano_demo(), carpeta_texturas=raiz / "assets" / "texturas")
-esc_tex.camara.mirar_a((2.2, 2.3, 2.4), (2.4, 0.8, -2.5))
+# Cámara dentro de la sala (esquina suroeste) mirando hacia el dormitorio: se ven el piso
+# (parquet), las paredes, la madera de mesa y cama, y la cerámica del jarrón.
+esc_tex.camara.mirar_a((0.6, 1.6, -0.5), (3.3, 0.9, -4.1))
 esc_tex.sombreado = "gouraud"
 esc_tex.iluminacion_activa = True
 esc_tex.texturas_activas = False
 img_sin_tex = con_titulo(esc_tex.renderizar_3d(420, 300).a_imagen(), "Modelo geométrico sin texturas")
 
 esc_tex.texturas_activas = True
-img_con_tex = con_titulo(esc_tex.renderizar_3d(420, 300).a_imagen(), "Modelo con texturas (mapeado plano y cúbico)")
+img_con_tex = con_titulo(esc_tex.renderizar_3d(420, 300).a_imagen(), "Modelo con texturas (mapeado plano, cúbico y cilíndrico)")
 lado_a_lado([img_sin_tex, img_con_tex]).save(SALIDA / "fig_09_sin_vs_con_textura.png")
 print("Generada fig_09_sin_vs_con_textura.png")
 
@@ -158,7 +170,9 @@ print("Generada fig_10_iluminacion_plano_vs_gouraud.png")
 
 # ------------------------------------------------ Figura 11: Escena completa 3D integrada
 esc_full = Escena(crear_plano_demo(), carpeta_texturas=raiz / "assets" / "texturas")
-esc_full.camara.mirar_a((2.5, 3.1, 2.9), (2.9, 0.7, -2.3))
+# Cámara dentro de la sala (esquina sureste, altura de los ojos) mirando hacia la esquina
+# noroeste: se ven el sofá, la mesa con el jarrón, la planta fractal y las ventanas.
+esc_full.camara.mirar_a((3.3, 1.7, -0.4), (0.4, 0.6, -3.6))
 esc_full.proyeccion = "perspectiva"
 esc_full.sombreado = "gouraud"
 esc_full.iluminacion_activa = True
@@ -168,6 +182,34 @@ con_titulo(
     "Habita3D: Vista 3D integrada (B-Rep, CSG, Bézier, Fractales, Texturas e Iluminación Gouraud)",
 ).save(SALIDA / "fig_11_escena_completa_3d.png")
 print("Generada fig_11_escena_completa_3d.png")
+
+# ------------------------------------------------ Figura 12: CSG general (unión, intersección, diferencia)
+from modelado.csg import caja, esfera, HojaCSG, OperacionCSG
+
+a_csg = HojaCSG("A", caja(0, 0.5, 0, 1.0, 1.0, 1.0, (215, 95, 70)))
+b_csg = HojaCSG("B", esfera(0.45, 0.85, 0.40, 0.55, (70, 125, 215), sectores=24, anillos=16))
+paneles_csg = []
+for titulo, arbol, azimut in (
+    ("A y B (sin operar)", None, 40),
+    ("Unión  A ∪ B", OperacionCSG("union", a_csg, b_csg), 40),
+    ("Intersección  A ∩ B", OperacionCSG("interseccion", a_csg, b_csg), 220),
+    ("Diferencia  A − B", OperacionCSG("diferencia", a_csg, b_csg), 40),
+):
+    e_csg = Escena(Plano())
+    e_csg.sombreado = "plano"
+    az, el = np.radians(azimut), np.radians(28)
+    objetivo = np.array([0.15, 0.5, 0.15])
+    ojo = objetivo + 3.2 * np.array([np.cos(el) * np.cos(az), np.sin(el), np.cos(el) * np.sin(az)])
+    e_csg.camara.mirar_a(tuple(ojo), tuple(objetivo))
+    luz = objetivo + 3.0 * np.array([np.cos(az + 0.6), 0.9, np.sin(az + 0.6)])
+    e_csg.luz.posicion.x, e_csg.luz.posicion.y, e_csg.luz.posicion.z = luz
+    if arbol is None:
+        e_csg.mallas_extra = [a_csg.solido.a_malla(), b_csg.solido.a_malla()]
+    else:
+        e_csg.mallas_extra = [arbol.evaluar().a_malla()]
+    paneles_csg.append(con_titulo(e_csg.renderizar_3d(260, 230).a_imagen(), titulo))
+lado_a_lado(paneles_csg).save(SALIDA / "fig_12_csg_union_interseccion_diferencia.png")
+print("Generada fig_12_csg_union_interseccion_diferencia.png")
 
 # ------------------------------------------------ Benchmark de rendimiento (Tabla 6.3)
 print("\n=== TABLA DE RENDIMIENTO (480x320, render por software NumPy) ===")
@@ -202,7 +244,7 @@ e3.sombreado = "gouraud"
 escenarios.append(("Vivienda amoblada (Gouraud)", e3, "Muebles B-Rep + iluminación Gouraud"))
 
 # Escena 4: Escena completa (muebles + jarrón Bézier + planta fractal)
-escenarios.append(("Escena completa (Bézier + Fractal)", esc_full, "Incluye revolución 24x20 y fractal n=4"))
+escenarios.append(("Escena completa (Bézier + Fractal)", esc_full, "Jarrón hueco por revolución 16x12, maceta y fractal n=4"))
 
 print("| Escena | N.º de triángulos | Tiempo/frame (ms) | FPS promedio | Observaciones |")
 print("|---|---|---|---|---|")

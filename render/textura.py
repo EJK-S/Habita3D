@@ -3,6 +3,10 @@ import pathlib
 import numpy as np
 from PIL import Image
 
+EXTENSIONES_IMAGEN = (".png", ".jpg", ".jpeg", ".bmp")
+LADO_MAXIMO = 512          # una foto grande se reduce al cargarla (memoria y tiempo de carga)
+TEXTURAS_BASICAS = ("piso", "pared", "madera", "ceramica")
+
 
 class Textura:
     """Mapa de bits RGB (alto, ancho, 3) normalizado en [0, 1] con muestreo repetido (wrap)."""
@@ -16,9 +20,13 @@ class Textura:
         self.nombre = nombre
 
     @classmethod
-    def desde_archivo(cls, ruta: str | pathlib.Path) -> "Textura":
+    def desde_archivo(cls, ruta: str | pathlib.Path, lado_maximo: int = LADO_MAXIMO) -> "Textura":
+        """Carga un mapa de bits (PNG, JPG, BMP…) con Pillow. Si es más grande que
+        `lado_maximo` píxeles se reduce conservando la proporción."""
         img = Image.open(ruta).convert("RGB")
-        return cls(np.asarray(img, dtype=np.float64) / 255.0, nombre=pathlib.Path(ruta).stem)
+        if max(img.size) > lado_maximo:
+            img.thumbnail((lado_maximo, lado_maximo), Image.LANCZOS)
+        return cls(np.asarray(img, dtype=np.float64) / 255.0, nombre=pathlib.Path(ruta).stem.lower())
 
     def guardar(self, ruta: str | pathlib.Path) -> None:
         p = pathlib.Path(ruta)
@@ -86,8 +94,29 @@ def generar_texturas_defecto(carpeta: str | pathlib.Path | None = None) -> dict[
     if carpeta is not None:
         base = pathlib.Path(carpeta)
         for nombre, tex in texturas.items():
-            ruta = base / f"{nombre}.png"
-            if not ruta.exists():
-                tex.guardar(ruta)
+            if not any((base / f"{nombre}{ext}").exists() for ext in EXTENSIONES_IMAGEN):
+                tex.guardar(base / f"{nombre}.png")
 
     return texturas
+
+
+def cargar_texturas(carpeta: str | pathlib.Path | None) -> tuple[dict[str, Textura], list[str]]:
+    """
+    Texturas de la escena a partir de mapas de bits. Cada imagen de `carpeta` (PNG, JPG o
+    BMP) se carga como textura con el nombre del archivo (`ladrillo.jpg` → "ladrillo").
+    Si falta alguna textura básica (piso, pared, madera, cerámica) se genera por código y se
+    guarda en la carpeta, así siempre existe y se puede reemplazar por una foto.
+    Devuelve (texturas, avisos): los avisos describen imágenes que no se pudieron leer.
+    """
+    texturas = generar_texturas_defecto(carpeta)
+    avisos: list[str] = []
+    if carpeta is None:
+        return texturas, avisos
+    for ruta in sorted(pathlib.Path(carpeta).iterdir()):
+        if ruta.suffix.lower() in EXTENSIONES_IMAGEN:
+            try:
+                tex = Textura.desde_archivo(ruta)
+                texturas[tex.nombre] = tex
+            except Exception as exc:       # archivo dañado o formato no soportado
+                avisos.append(f"No se pudo cargar {ruta.name}: {exc}")
+    return texturas, avisos

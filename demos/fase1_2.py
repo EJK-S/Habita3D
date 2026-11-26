@@ -16,7 +16,7 @@ SALIDA.mkdir(parents=True, exist_ok=True)
 
 
 def fuente(t=14):
-    for f in ("DejaVuSans.ttf", "LiberationSans-Regular.ttf", "Arial.ttf"):
+    for f in ("DejaVuSans.ttf", "LiberationSans-Regular.ttf", "arial.ttf", "Arial.ttf"):
         try:
             return ImageFont.truetype(f, t)
         except OSError:

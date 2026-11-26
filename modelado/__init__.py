@@ -2,7 +2,7 @@ from .malla import Malla
 from .arquitectura import extruir_muro, csg_diferencia, crear_piso
 from .curvas import Bezier, revolucion
 from .fractales import arbol_fractal
-from .catalogo import crear_prisma, construir_mueble_3d
+from .catalogo import crear_prisma, construir_mueble_3d, es_decorativo
 
 __all__ = [
     "Malla",
@@ -14,4 +14,5 @@ __all__ = [
     "arbol_fractal",
     "crear_prisma",
     "construir_mueble_3d",
+    "es_decorativo",
 ]

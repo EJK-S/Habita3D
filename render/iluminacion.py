@@ -65,16 +65,25 @@ def calcular_phong_vectorizado(
     return np.clip(rgb, 0.0, 1.0)
 
 
+def _colores_normalizados(color_base, n: int) -> np.ndarray:
+    """Acepta un color RGB único o un arreglo (n, 3) de colores (0–255) y devuelve (n, 3) en [0, 1]."""
+    arr = np.asarray(color_base, dtype=np.float64) / 255.0
+    if arr.ndim == 1:
+        arr = np.tile(arr, (n, 1))
+    return arr
+
+
 def sombreado_plano(
     vertices: np.ndarray,
     caras: np.ndarray,
     normales_cara: np.ndarray,
-    color_base: tuple[int, int, int],
+    color_base,
     pos_camara: np.ndarray,
     luz: Luz,
 ) -> np.ndarray:
     """
     Calcula un color RGB por cada triángulo evaluando Phong en el centroide de la cara.
+    `color_base` puede ser un color RGB o un arreglo (M, 3) con un color por cara.
     Devuelve arreglo (M, 3) en [0, 1].
     """
     if len(caras) == 0:
@@ -83,23 +92,24 @@ def sombreado_plano(
     v1 = vertices[caras[:, 1]]
     v2 = vertices[caras[:, 2]]
     centroides = (v0 + v1 + v2) / 3.0
-    col_norm = np.tile(np.asarray(color_base, dtype=np.float64) / 255.0, (len(caras), 1))
+    col_norm = _colores_normalizados(color_base, len(caras))
     return calcular_phong_vectorizado(centroides, normales_cara, col_norm, pos_camara, luz)
 
 
 def sombreado_gouraud(
     vertices: np.ndarray,
     normales_vertice: np.ndarray,
-    color_base: tuple[int, int, int],
+    color_base,
     pos_camara: np.ndarray,
     luz: Luz,
 ) -> np.ndarray:
     """
     Calcula un color RGB por cada vértice evaluando Phong con su normal promediada.
     Luego el rasterizador interpola estos colores en el interior del triángulo.
+    `color_base` puede ser un color RGB o un arreglo (N, 3) con un color por vértice.
     Devuelve arreglo (N, 3) en [0, 1].
     """
     if len(vertices) == 0:
         return np.zeros((0, 3), dtype=np.float64)
-    col_norm = np.tile(np.asarray(color_base, dtype=np.float64) / 255.0, (len(vertices), 1))
+    col_norm = _colores_normalizados(color_base, len(vertices))
     return calcular_phong_vectorizado(vertices, normales_vertice, col_norm, pos_camara, luz)
