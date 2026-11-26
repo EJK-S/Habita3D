@@ -253,6 +253,26 @@ class Plano:
                 return True
         return False
 
+    def punto_libre(self, x, y, radio=0.25):
+        """¿Puede estar una persona (círculo de `radio` m) en (x, y)? Los muros bloquean;
+        el paso por una puerta queda libre (por su centro) y las ventanas no se cruzan."""
+        for i, m in enumerate(self.muros):
+            if m.largo() < 1e-9:
+                continue
+            u = m.direccion()
+            rel = np.array((x, y), float) - np.array(m.p1, float)
+            t = float(np.dot(rel, u))                      # a lo largo del muro
+            d = float(u[0] * rel[1] - u[1] * rel[0])       # distancia perpendicular
+            h = m.espesor / 2 + radio
+            if abs(d) >= h or not (-h < t < m.largo() + h):
+                continue
+            pasa = any(ab.muro == i and ab.tipo == "puerta"
+                       and abs(t - ab.pos * m.largo()) <= max(ab.ancho / 2 - 0.1, 0.05)
+                       for ab in self.aberturas)
+            if not pasa:
+                return False
+        return True
+
     def ajustar_junto_a_vecinos(self, i, pos, ancho, iman=0.15):
         """
         Ajuste magnético de un vano sobre el muro i. Si queda encima de otro vano o a menos

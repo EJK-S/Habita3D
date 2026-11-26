@@ -172,3 +172,15 @@ def test_dibujar_plano_pinta_muros_y_muebles():
     pl.dibujar(fb, escala=60, origen=(30, 210))
     assert fb.leer_pixel(30, 210 - 90) == (70, 70, 80)           # muro oeste (x=0, y=1.5 m)
     assert fb.leer_pixel(30 + 120, 210 - 90) == (120, 140, 200)  # centro del sofá
+
+
+def test_punto_libre_muros_bloquean_y_puertas_se_cruzan():
+    pl = Plano()
+    s = pl.agregar_habitacion(0, 0, 4, 3)
+    pl.agregar_abertura(s[0], 0.5, 1.0, "puerta")      # puerta en el muro sur, centro x = 2
+    pl.agregar_abertura(s[2], 0.5, 1.2, "ventana")     # ventana en el muro norte
+    assert pl.punto_libre(2.0, 1.5)                    # centro de la sala
+    assert not pl.punto_libre(1.0, 0.0)                # dentro del muro sur
+    assert not pl.punto_libre(1.0, 0.2)                # demasiado pegado al muro
+    assert pl.punto_libre(2.0, 0.0)                    # por el centro de la puerta
+    assert not pl.punto_libre(2.0, 3.0)                # una ventana no se cruza

@@ -865,11 +865,13 @@ class App:
             f"Algoritmo líneas [B]: {NOMBRES_ALGORITMO[self.algoritmo_lineas]}",
             f"Grosor [1-9]: {self.grosor_trazo} px",
             f"Fractal nivel [+/-]: {self.fractal_profundidad}",
+            f"Fractal ángulo [←→]: {self.fractal_angulo:.0f}°",
+            f"Fractal escala [↑↓]: {self.fractal_escala:.2f}",
             "Mover: Seleccionar + arrastrar",
             "Escalar: esquina (Shift: proporción)",
             "Rotar mueble: Q / E",
             "Borrar mueble sel.: Supr",
-            "Cámara 3D: W A S D + Mouse",
+            "Cámara 3D: WASD + Mouse (C: inicio)",
             "Panel de luz (Vista 3D): O",
         ]
         for i, txt in enumerate(props):
@@ -878,8 +880,6 @@ class App:
         # Lienzo central
         rect_lienzo = pygame.Rect(180, 84, self.ancho - 410, self.alto - 116)
         t0 = time.perf_counter()
-        if self.vista_activa == "Plano 2D":
-            fb = self._renderizar_lienzo_2d(rect_lienzo.width, rect_lienzo.height)
         renderizado = True
         if self.vista_activa == "Plano 2D":
             fb = self._renderizar_lienzo_2d(rect_lienzo.width, rect_lienzo.height)
@@ -963,6 +963,17 @@ class App:
                     elif pygame.K_1 <= ev.key <= pygame.K_9:
                         self.grosor_trazo = ev.key - pygame.K_0
                         self.mensaje = f"Grosor del pincel: {self.grosor_trazo} px"
+                    elif ev.key in (pygame.K_LEFT, pygame.K_RIGHT) and self.vista_activa == "Fractales":
+                        d = 2.0 if ev.key == pygame.K_RIGHT else -2.0
+                        self.fractal_angulo = round(min(60.0, max(5.0, self.fractal_angulo + d)), 1)
+                        self.mensaje = f"Ángulo de las ramas: {self.fractal_angulo:.0f}°"
+                    elif ev.key in (pygame.K_UP, pygame.K_DOWN) and self.vista_activa == "Fractales":
+                        d = 0.02 if ev.key == pygame.K_UP else -0.02
+                        self.fractal_escala = round(min(0.85, max(0.50, self.fractal_escala + d)), 2)
+                        self.mensaje = f"Escala por nivel: {self.fractal_escala:.2f}"
+                    elif ev.key == pygame.K_c and self.vista_activa == "Vista 3D":
+                        self.escena.reiniciar_camara()
+                        self.mensaje = "Cámara en la posición inicial"
                     elif ev.key == pygame.K_o:
                         self.panel_luz_visible = not self.panel_luz_visible
                         self.mensaje = "Panel de luz " + ("visible" if self.panel_luz_visible else "oculto (O)")
@@ -1158,13 +1169,13 @@ class App:
             if self.vista_activa == "Vista 3D" and wasd:
                 paso = self.velocidad_camara * min(dt_cuadro, 0.1)
                 if teclas[pygame.K_w]:
-                    self.escena.camara.mover(adelante=paso)
+                    self.escena.mover_camara(adelante=paso)
                 if teclas[pygame.K_s]:
-                    self.escena.camara.mover(adelante=-paso)
+                    self.escena.mover_camara(adelante=-paso)
                 if teclas[pygame.K_a]:
-                    self.escena.camara.mover(derecha=-paso)
+                    self.escena.mover_camara(derecha=-paso)
                 if teclas[pygame.K_d]:
-                    self.escena.camara.mover(derecha=paso)
+                    self.escena.mover_camara(derecha=paso)
 
             self._dibujar_ui()
             dt_cuadro = self.reloj.tick(30) / 1000.0

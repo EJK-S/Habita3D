@@ -44,7 +44,7 @@ class Escena:
 
         # Cámara dentro de la sala (esquina suroeste, a altura de los ojos) mirando hacia
         # la esquina opuesta. El plano va de z = 0 a z = -4.5 (Z = -y del plano).
-        self.camara = Camara(eye=(0.6, 1.6, -0.5), target=(3.3, 0.9, -4.1))
+        self.camara = Camara(eye=self.CAMARA_INICIAL[0], target=self.CAMARA_INICIAL[1])
         self.volumen = VolumenVision(cercano=0.15, lejano=60.0)
         self.luz = Luz(posicion=(3.0, 2.35, -2.2))
         # Texturas: mapas de bits cargados de `carpeta_texturas` (o generados si no hay carpeta)
@@ -63,6 +63,35 @@ class Escena:
         self.por_lotes = True
 
         self.reconstruir_3d()
+
+    CAMARA_INICIAL = ((0.6, 1.6, -0.5), (3.3, 0.9, -4.1))
+    RADIO_CAMARA = 0.25      # m: holgura entre la cámara y los muros
+
+    def reiniciar_camara(self) -> None:
+        self.camara.mirar_a(*self.CAMARA_INICIAL)
+
+    def mover_camara(self, adelante: float = 0.0, derecha: float = 0.0) -> None:
+        """Mueve la cámara sin atravesar muros. El desplazamiento se parte en pasos de a lo
+        sumo 10 cm para que un paso grande no "salte" un muro."""
+        n = max(1, int(np.ceil(max(abs(adelante), abs(derecha)) / 0.10)))
+        for _ in range(n):
+            self._paso_camara(adelante / n, derecha / n)
+
+    def _paso_camara(self, adelante: float, derecha: float) -> None:
+        """Un paso: si choca, se desliza a lo largo del muro (probando cada eje por separado).
+        Si la cámara ya empezó dentro de un muro, se la deja salir."""
+        cam, plano = self.camara, self.plano
+        e0, t0 = cam.eye, cam.target
+        libre = lambda e: plano.punto_libre(e.x, -e.z, self.RADIO_CAMARA)
+        cam.mover(adelante=adelante, derecha=derecha)
+        d = cam.eye - e0
+        if libre(cam.eye) or not libre(e0):
+            return
+        for paso in (Vec3(d.x, 0.0, 0.0), Vec3(0.0, 0.0, d.z)):
+            if libre(e0 + paso):
+                cam.eye, cam.target = e0 + paso, t0 + paso
+                return
+        cam.eye, cam.target = e0, t0
 
     def recargar_texturas(self) -> int:
         """Vuelve a leer las imágenes de la carpeta (p. ej. tras reemplazar piso.png por una foto)."""

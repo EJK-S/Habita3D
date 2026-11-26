@@ -148,3 +148,18 @@ def test_altura_en_rayo_vertical_sobre_caja():
     caja = crear_prisma(0.0, 0.5, 0.0, 1.0, 1.0, 1.0)                      # y de 0 a 1
     assert np.isclose(caja.altura_en(0.2, -0.3), 1.0)
     assert caja.altura_en(2.0, 0.0) is None
+
+
+def test_camara_no_atraviesa_muros_pero_cruza_puertas():
+    pl = Plano()
+    s = pl.agregar_habitacion(0, 0, 4, 3)
+    pl.agregar_abertura(s[0], 0.5, 1.0, "puerta")      # puerta sur en x = 2
+    e = Escena(pl)
+    e.camara.mirar_a((1.0, 1.6, -1.0), (1.0, 1.6, 3.0))     # mira hacia el muro sur (y = 0)
+    e.mover_camara(adelante=5.0)
+    assert -e.camara.eye.z >= 0.075 + e.RADIO_CAMARA - 1e-6     # se detuvo antes del muro
+    e.camara.mirar_a((2.0, 1.6, -1.0), (2.0, 1.6, 3.0))     # ahora de frente a la puerta
+    e.mover_camara(adelante=2.0)
+    assert -e.camara.eye.z < 0.0                                # salió por la puerta
+    e.reiniciar_camara()
+    assert (e.camara.eye.x, e.camara.eye.y, e.camara.eye.z) == Escena.CAMARA_INICIAL[0]
