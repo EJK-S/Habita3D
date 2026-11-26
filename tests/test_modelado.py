@@ -77,3 +77,12 @@ def test_revolucion_y_fractal():
     f1 = arbol_fractal(profundidad=2, ramas_por_nodo=3)
     f2 = arbol_fractal(profundidad=4, ramas_por_nodo=3)
     assert len(f2.caras) > len(f1.caras)
+
+
+def test_jarron_con_perfil_bezier_propio():
+    from modelado import construir_mueble_3d
+    base = construir_mueble_3d("jarrón Bézier", 0.4, 0.4)
+    ancho = construir_mueble_3d("jarrón Bézier", 0.4, 0.4,
+                                perfil=((0.0, 0.0), (0.40, 0.05), (0.40, 0.30), (0.10, 0.50)))
+    assert ancho.vertices[:, 0].max() > base.vertices[:, 0].max() + 0.1     # la curva propia manda
+    assert abs(ancho.vertices[:, 1].max() - 0.50) < 0.02                    # su altura es la del perfil

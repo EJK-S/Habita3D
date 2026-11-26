@@ -70,6 +70,7 @@ class MuebleEnPlanta:
     color: tuple = (190, 160, 120)
     escala_x: float = 1.0    # escalamiento a lo largo del ancho (eje x local del mueble)
     escala_y: float = 1.0    # escalamiento a lo largo del largo (eje y local del mueble)
+    perfil: tuple | None = None   # puntos de control (r, y) del perfil Bézier de un jarrón propio
 
     def matriz_modelo(self):
         """M = T · R · S: el mueble se define centrado en el origen, se escala en sus

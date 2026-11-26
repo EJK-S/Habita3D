@@ -95,12 +95,14 @@ def construir_mueble_3d(
     elevacion: float = 0.0,
     escala_x: float = 1.0,
     escala_z: float = 1.0,
+    perfil: tuple | None = None,
 ) -> Malla:
     """
     Genera la malla 3D de un mueble del catálogo (mesa, silla, sofá, cama, ropero,
     estante, velador, lámpara, jarrón, planta) y la ubica en (x, elevacion, -y_plano)
     rotada `angulo`°. `elevacion` es la altura de apoyo (0 = piso; 0.75 = sobre una mesa).
     `escala_x` y `escala_z` son el escalamiento del plano (ancho y largo); la altura no cambia.
+    `perfil` (opcional): puntos de control (r, y) de la curva Bézier de un jarrón personalizado.
     """
     clave = nombre.lower().strip()
     piezas: list[Malla] = []
@@ -153,7 +155,8 @@ def construir_mueble_3d(
 
     elif "jarron" in clave or "jarrón" in clave:
         # Perfil cerrado con pared de 1.2 cm: sólido hueco con boca, interior y fondo
-        curva = Bezier([(0.0, 0.0), (0.14, 0.02), (0.20, 0.18), (0.08, 0.34), (0.13, 0.46)])
+        # Si el mueble trae `perfil` (curva dibujada en el editor Bézier), se usa esa curva.
+        curva = Bezier(perfil if perfil else [(0.0, 0.0), (0.14, 0.02), (0.20, 0.18), (0.08, 0.34), (0.13, 0.46)])
         # Resolución moderada: con grosor la malla tiene cara exterior e interior (doble de
         # triángulos) y el render por software recorre los triángulos uno a uno.
         piezas.append(revolucion(curva, segmentos_radiales=16, pasos_perfil=12, color=color,

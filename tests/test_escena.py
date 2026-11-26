@@ -163,3 +163,13 @@ def test_camara_no_atraviesa_muros_pero_cruza_puertas():
     assert -e.camara.eye.z < 0.0                                # salió por la puerta
     e.reiniciar_camara()
     assert (e.camara.eye.x, e.camara.eye.y, e.camara.eye.z) == Escena.CAMARA_INICIAL[0]
+
+
+def test_escena_usa_el_perfil_del_jarron_bezier():
+    from plano import MuebleEnPlanta
+    pl = Plano()
+    pl.agregar_mueble(MuebleEnPlanta("jarrón Bézier", 0.8, 0.8, 2.0, 2.0, 0, (110, 150, 190),
+                                     perfil=((0.0, 0.0), (0.40, 0.05), (0.40, 0.30), (0.10, 0.50))))
+    e = Escena(pl)
+    v = e.mallas[-1].vertices
+    assert v[:, 0].max() - v[:, 0].min() > 0.5        # diámetro ~0.6 m, no los ~0.28 del jarrón base

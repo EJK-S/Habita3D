@@ -26,8 +26,10 @@ CATALOGO_MUEBLES = [
     ("velador", 0.5, 0.45, (175, 135, 95)),
     ("lampara", 0.45, 0.45, (240, 220, 150)),
     ("jarron", 0.40, 0.40, (195, 115, 85)),
+    ("jarrón Bézier", 0.40, 0.40, (110, 150, 190)),   # usa la curva del editor de curvas
     ("planta", 0.45, 0.45, (70, 155, 80)),
 ]
+NOMBRE_JARRON_BEZIER = "jarrón Bézier"
 
 # Carpeta de los mapas de bits usados como texturas, relativa al proyecto (no a la carpeta
 # desde la que se ejecuta main.py). Toda imagen PNG/JPG/BMP que se ponga aquí se carga.
@@ -925,6 +927,8 @@ class App:
             ayuda = (f"Bézier de grado {grado}  ·  De Casteljau con t = {self.t_bezier:.2f} (rueda)  ·  "
                      "arrastrar: mover punto  ·  clic derecho: agregar / quitar")
             self.pantalla.blit(self.fuente.render(ayuda, True, (60, 70, 90)), (rect_lienzo.x + 10, rect_lienzo.y + 8))
+            self.pantalla.blit(self.fuente.render("J: llevar esta curva al plano como jarrón (luego clic para colocarlo)",
+                                                  True, (30, 90, 60)), (rect_lienzo.x + 10, rect_lienzo.y + 28))
 
         # Barra inferior de estado
         pygame.draw.rect(self.pantalla, (224, 230, 238), (0, self.alto - 28, self.ancho, 28))
@@ -971,6 +975,11 @@ class App:
                         d = 0.02 if ev.key == pygame.K_UP else -0.02
                         self.fractal_escala = round(min(0.85, max(0.50, self.fractal_escala + d)), 2)
                         self.mensaje = f"Escala por nivel: {self.fractal_escala:.2f}"
+                    elif ev.key == pygame.K_j and self.vista_activa == "Editor de curvas":
+                        self.idx_catalogo = [c[0] for c in CATALOGO_MUEBLES].index(NOMBRE_JARRON_BEZIER)
+                        self.herramienta = "Mueble"
+                        self.vista_activa = "Plano 2D"
+                        self.mensaje = "Haz clic en el plano para colocar tu jarrón (curva del editor)"
                     elif ev.key == pygame.K_c and self.vista_activa == "Vista 3D":
                         self.escena.reiniciar_camara()
                         self.mensaje = "Cámara en la posición inicial"
@@ -1101,7 +1110,13 @@ class App:
                                     nom, a, l, col = ("planta", 0.45, 0.45, (70, 155, 80))
                                 else:
                                     nom, a, l, col = CATALOGO_MUEBLES[self.idx_catalogo]
-                                self.escena.plano.agregar_mueble(MuebleEnPlanta(nom, a, l, wx, wy, 0.0, col))
+                                perfil = None
+                                if nom == NOMBRE_JARRON_BEZIER:
+                                    # Copia de la curva actual: editarla después no cambia los jarrones ya puestos
+                                    perfil = tuple((float(r), float(y)) for r, y in self.puntos_bezier)
+                                    a = l = round(max(0.10, 2.0 * float(Bezier(perfil).muestrear(24)[:, 0].max())), 3)
+                                self.escena.plano.agregar_mueble(
+                                    MuebleEnPlanta(nom, a, l, wx, wy, 0.0, col, perfil=perfil))
                                 self.mueble_sel = len(self.escena.plano.muebles) - 1
                                 self.escena.reconstruir_3d()
 

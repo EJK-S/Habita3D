@@ -139,7 +139,7 @@ class Escena:
             return construir_mueble_3d(
                 nombre=mu.nombre, ancho=mu.ancho, largo=mu.largo, x=mu.x, y_plano=mu.y,
                 angulo=mu.angulo, color=mu.color, elevacion=elevacion,
-                escala_x=mu.escala_x, escala_z=mu.escala_y,
+                escala_x=mu.escala_x, escala_z=mu.escala_y, perfil=mu.perfil,
             )
 
         muebles_3d: list[Malla | None] = [None] * len(self.plano.muebles)
