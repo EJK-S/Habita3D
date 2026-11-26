@@ -10,6 +10,7 @@ from modelado import (
     csg_diferencia,
     crear_piso,
     construir_mueble_3d,
+    marco_y_hoja,
     es_decorativo,
 )
 from vista import Camara, VolumenVision, proy_ortografica, proy_perspectiva
@@ -131,6 +132,13 @@ class Escena:
                     muro.p1, muro.p2, muro.espesor, self.altura_muros
                 )
             generadas.append(malla_muro)
+
+        # 2b. Marcos, hojas de puerta y vidrios de ventana que visten cada vano
+        for ab in self.plano.aberturas:
+            muro = self.plano.muros[ab.muro]
+            generadas.extend(marco_y_hoja(
+                muro.p1, muro.p2, muro.espesor, self.altura_muros,
+                {"pos": ab.pos, "ancho": ab.ancho, "tipo": ab.tipo}))
 
         # 3. Instanciar muebles del catálogo sincronizados con MuebleEnPlanta.
         #    Primero los muebles grandes (van en el piso) y luego los decorativos, que se

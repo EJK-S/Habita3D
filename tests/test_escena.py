@@ -173,3 +173,12 @@ def test_escena_usa_el_perfil_del_jarron_bezier():
     e = Escena(pl)
     v = e.mallas[-1].vertices
     assert v[:, 0].max() - v[:, 0].min() > 0.5        # diámetro ~0.6 m, no los ~0.28 del jarrón base
+
+
+def test_escena_viste_los_vanos():
+    pl = Plano()
+    s = pl.agregar_habitacion(0, 0, 4, 3)
+    pl.agregar_abertura(s[0], 0.5, 1.0, "puerta")
+    pl.agregar_abertura(s[2], 0.5, 1.2, "ventana")
+    nombres = [m.nombre for m in Escena(pl).mallas]
+    assert "hoja_puerta" in nombres and "vidrio" in nombres

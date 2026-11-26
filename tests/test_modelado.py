@@ -86,3 +86,17 @@ def test_jarron_con_perfil_bezier_propio():
                                 perfil=((0.0, 0.0), (0.40, 0.05), (0.40, 0.30), (0.10, 0.50)))
     assert ancho.vertices[:, 0].max() > base.vertices[:, 0].max() + 0.1     # la curva propia manda
     assert abs(ancho.vertices[:, 1].max() - 0.50) < 0.02                    # su altura es la del perfil
+
+
+def test_marco_y_hoja_de_puerta_y_ventana():
+    from modelado import marco_y_hoja
+    puerta = marco_y_hoja((0, 0), (6, 0), 0.15, 2.6, {"pos": 0.5, "ancho": 1.0, "tipo": "puerta"})
+    assert [m.nombre for m in puerta] == ["marco_jamba_izq", "marco_jamba_der", "marco_dintel", "hoja_puerta"]
+    assert max(m.vertices[:, 1].max() for m in puerta) <= 2.10 + 1e-9        # nada sobre el dintel
+    hoja = puerta[-1].vertices
+    assert abs(hoja[:, 0].min() - 3.0 + 0.5 - 0.05) < 1e-6                   # junto a la jamba de la bisagra (x = 2.5 + 0.05)
+    ventana = marco_y_hoja((0, 0), (6, 0), 0.15, 2.6, {"pos": 0.5, "ancho": 1.4, "tipo": "ventana"})
+    nombres = [m.nombre for m in ventana]
+    assert "vidrio" in nombres and "hoja_puerta" not in nombres
+    assert min(m.vertices[:, 1].min() for m in ventana) >= 0.90 - 0.03       # el alféizar apenas sobresale del vano
+

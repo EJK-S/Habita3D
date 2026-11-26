@@ -172,6 +172,75 @@ def csg_diferencia(
     return Malla.combinar(bloques, nombre="muro_csg")
 
 
+def marco_y_hoja(
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+    espesor: float,
+    altura: float,
+    abertura: dict,
+) -> list[Malla]:
+    """
+    Piezas que "visten" el vano que `csg_diferencia` dejó abierto, en las mismas coordenadas
+    locales del muro (s a lo largo, y vertical, w en el espesor):
+      - puerta: marco (dos jambas y dintel) y hoja abierta a 90° con bisagra en el lado
+        izquierdo, igual que el arco que dibuja el plano 2D;
+      - ventana: marco con alféizar, una lámina de vidrio (opaca, celeste: el rasterizador no
+        tiene transparencia) y una cruz de travesaños.
+    Devuelve una malla por pieza; `abertura` usa las mismas claves que en `csg_diferencia`.
+    """
+    a = np.asarray(p1, dtype=np.float64)
+    b = np.asarray(p2, dtype=np.float64)
+    d = b - a
+    largo = float(np.linalg.norm(d))
+    if largo < 1e-6:
+        return []
+    u = d / largo
+    n = np.array([-u[1], u[0]], dtype=np.float64)
+    h = espesor / 2.0
+
+    ancho = float(abertura.get("ancho", 0.9))
+    centro = float(abertura.get("pos", 0.5)) * largo
+    s0, s1 = centro - ancho / 2.0, centro + ancho / 2.0
+    tipo = abertura.get("tipo", "puerta")
+    if tipo == "ventana":
+        y0, y1 = 0.90, min(2.10, altura - 0.1)
+    else:
+        y0, y1 = 0.0, min(2.10, altura - 0.1)
+
+    madera = (150, 108, 68)
+    g = 0.05                                   # ancho de las piezas del marco
+    w = h + 0.01                               # el marco sobresale 1 cm por cada cara del muro
+
+    def caja(sa, sb, ya, yb, wa, wb, color, textura):
+        return _caja_local_muro(sa, sb, ya, yb, wa, wb, a, u, n, color, textura)
+
+    piezas = [caja(s0, s0 + g, y0, y1, -w, w, madera, "madera"),          # jamba izquierda
+              caja(s1 - g, s1, y0, y1, -w, w, madera, "madera"),          # jamba derecha
+              caja(s0 + g, s1 - g, y1 - g, y1, -w, w, madera, "madera")]  # dintel
+    nombres = ["marco_jamba_izq", "marco_jamba_der", "marco_dintel"]
+
+    if tipo == "ventana":
+        piezas.append(caja(s0 + g, s1 - g, y0, y0 + g, -w, w, madera, "madera"))        # base del marco
+        nombres.append("marco_base")
+        piezas.append(caja(s0 - 0.03, s1 + 0.03, y0 - 0.02, y0 + 0.03, -h - 0.04, h + 0.03,
+                           (225, 220, 210), None))                                      # alféizar
+        nombres.append("alfeizar")
+        piezas.append(caja(s0 + g, s1 - g, y0 + g, y1 - g, -0.006, 0.006, (178, 212, 240), None))
+        nombres.append("vidrio")
+        ym = (y0 + y1) / 2.0
+        piezas.append(caja(centro - 0.015, centro + 0.015, y0 + g, y1 - g, -0.02, 0.02, madera, "madera"))
+        piezas.append(caja(s0 + g, s1 - g, ym - 0.015, ym + 0.015, -0.02, 0.02, madera, "madera"))
+        nombres += ["travesano_vertical", "travesano_horizontal"]
+    else:
+        # Hoja abierta 90°: pegada a la jamba de la bisagra y extendida hacia +n (como el arco 2D)
+        piezas.append(caja(s0 + g, s0 + g + 0.04, 0.0, y1 - g, 0.0, ancho - 2 * g, (140, 96, 60), "madera"))
+        nombres.append("hoja_puerta")
+
+    for m, nom in zip(piezas, nombres):
+        m.nombre = nom
+    return piezas
+
+
 def crear_piso(
     x0: float,
     y0: float,
